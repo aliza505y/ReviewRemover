@@ -1,79 +1,116 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
-    android:id="@+id/main"
-    android:background="#0C0F12"
-    android:orientation="vertical"
-    android:padding="16dp"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    tools:context=".MainActivity">
+    android:fillViewport="true"
+    android:background="#121212">
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="SERVER DB REVIEW REMOVER"
-        android:textColor="#00FF66"
-        android:textSize="18sp"
-        android:textStyle="bold"
-        android:layout_marginBottom="16dp" />
-
-    <EditText
-        android:id="@+id/etBaseUrl"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="Client Base URL (e.g. https://api.mysite.com)"
-        android:textColorHint="#667085"
-        android:textColor="#FFFFFF"
-        android:background="#161B22"
-        android:padding="12dp"
-        android:layout_marginBottom="8dp"/>
+        android:orientation="vertical"
+        android:padding="16dp">
 
-    <EditText
-        android:id="@+id/etApiKey"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="Admin API Key / Auth Token"
-        android:textColorHint="#667085"
-        android:textColor="#FFFFFF"
-        android:inputType="textPassword"
-        android:background="#161B22"
-        android:padding="12dp"
-        android:layout_marginBottom="12dp"/>
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardBackgroundColor="#1E1E1E"
+            app:cardCornerRadius="12dp"
+            app:strokeWidth="1dp"
+            app:strokeColor="#333333"
+            android:layout_marginBottom="16dp">
 
-    <Button
-        android:id="@+id/btnStartCleaning"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="RUN LIVE DATABASE CLEANUP"
-        android:backgroundTint="#00FF66"
-        android:textColor="#000000"
-        android:textStyle="bold"/>
+            <TextView
+                android:id="@+id/tvStatusHeader"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="● SYSTEM LOCKED"
+                android:textColor="#FF5252"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:gravity="center"
+                android:padding="14dp"/>
+        </com.google.android.material.card.MaterialCardView>
 
-    <ProgressBar
-        android:id="@+id/progressBar"
-        style="?android:attr/progressBarStyleHorizontal"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:max="100"/>
+        <EditText
+            android:id="@+id/etApiKey"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Enter Google Cloud API Key (AIzaSy...)"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#777777"
+            android:background="#1E1E1E"
+            android:padding="14dp"
+            android:textSize="14sp"
+            android:layout_marginBottom="8dp"/>
 
-    <TextView
-        android:id="@+id/tvLogs"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:layout_marginTop="12dp"
-        android:background="#050709"
-        android:padding="10dp"
-        android:textColor="#00FF66"
-        android:fontFamily="monospace"
-        android:text=">> Console initialized. Enter server API details above to execute database cleanup..."
-        android:textSize="12sp"/>
+        <Button
+            android:id="@+id/btnUnlock"
+            android:layout_width="match_parent"
+            android:layout_height="50dp"
+            android:text="UNLOCK CONSOLE"
+            android:textStyle="bold"
+            android:backgroundTint="#2196F3"
+            android:layout_marginBottom="16dp"/>
 
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Paste Review URLs (1per line,Up to 50 links):"
+            android:textColor="#616060"
+            android:textSize="13sp"
+            android:layout_marginBottom="6dp"/>
 
-</LinearLayout>
+        <EditText
+            android:id="@+id/etReviewUrls"
+            android:layout_width="match_parent"
+            android:layout_height="180dp"
+            android:hint="https://maps.app.goo.gl/...\nhttps://maps.app.goo.gl/..."
+            android:gravity="top|start"
+            android:inputType="textMultiLine"
+            android:scrollbars="vertical"
+            android:fadeScrollbars="false"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#444444"
+            android:background="#1E1E1E"
+            android:padding="12dp"
+            android:enabled="false"
+            android:textSize="13sp"
+            android:layout_marginBottom="12dp"/>
 
+        <Button
+            android:id="@+id/btnSubmitReport"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:text="START BULK AUTO-REPORT"
+            android:textStyle="bold"
+            android:textColor="@color/white"
+            android:enabled="false"
+            android:backgroundTint="#4CAF50"
+            android:layout_marginBottom="12dp"/>
 
+        <TextView
+            android:id="@+id/tvTerminalLog"
+            android:layout_width="match_parent"
+            android:layout_height="100dp"
+            android:background="#000000"
+            android:textColor="#00FF00"
+            android:fontFamily="monospace"
+            android:textSize="11sp"
+            android:padding="10dp"
+            android:scrollbars="vertical"
+            android:text="> Terminal ready..."
+            android:layout_marginBottom="16dp"/>
 
+        <Button
+            android:id="@+id/btnViewHistory"
+            android:layout_width="match_parent"
+            android:layout_height="50dp"
+            android:text="VIEW REPORT HISTORY &amp; STATUS"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold"
+            android:backgroundTint="#333333"/>
+
+    </LinearLayout>
+</ScrollView>

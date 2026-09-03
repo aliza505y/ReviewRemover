@@ -1,11 +1,11 @@
 package com.example.reviewremover
 
-import com.google.gson.annotations.SerializedName
+data class ReportPayload(
+    val reason: String = "SPAM_OR_POLICY_VIOLATION",
+    val comments: String = "Automated policy compliance report."
+)
 
-data class ReviewModel(
-    @SerializedName("id") val id: String,
-    @SerializedName("reviewer_name") val reviewerName: String,
-    @SerializedName("rating") val rating: Int,
-    @SerializedName("review_text") val reviewText: String,
-    @SerializedName("created_at") val createdAt: String? = null
+data class ReportResponse(
+    val name: String?,
+    val state: String? // e.g., "PENDING_REVIEW"
 )

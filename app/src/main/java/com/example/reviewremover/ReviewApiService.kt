@@ -1,22 +1,18 @@
 package com.example.reviewremover
 
 import retrofit2.Response
-import retrofit2.http.DELETE
-import retrofit2.http.GET
+import retrofit2.http.Body
 import retrofit2.http.Header
-import retrofit2.http.Url
+import retrofit2.http.POST
+import retrofit2.http.Path
 
 interface ReviewApiService {
-
-    @GET
-    suspend fun getAllReviews(
-        @Url fullUrl: String,
-        @Header("Authorization") authToken: String
-    ): Response<List<ReviewModel>>
-
-    @DELETE
-    suspend fun deleteReviewById(
-        @Url deleteEndpointUrl: String,
-        @Header("Authorization") authToken: String
-    ): Response<Unit>
+    @POST("v1/accounts/{accountId}/locations/{locationId}/reviews/{reviewId}:report")
+    suspend fun submitReportToGoogle(
+        @Header("Authorization") authHeader: String,
+        @Path("accountId") accountId: String,
+        @Path("locationId") locationId: String,
+        @Path("reviewId") reviewId: String,
+        @Body payload: ReportPayload
+    ): Response<ReportResponse>
 }

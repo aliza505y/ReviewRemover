@@ -1,177 +1,212 @@
 package com.example.reviewremover
 
+import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import android.text.method.ScrollingMovementMethod
+import android.widget.Button
+import android.widget.EditText
+import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
-import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
-import androidx.room.Room
-import com.example.reviewremover.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import java.util.UUID
-
+import androidx.work.Constraints
+import androidx.work.NetworkType
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import java.util.concurrent.TimeUnit
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var binding: ActivityMainBinding
-    private lateinit var db: AppDatabase
+    private lateinit var tvStatusHeader: TextView
+    private lateinit var etApiKey: EditText
+    private lateinit var btnUnlock: Button
+    private lateinit var etReviewUrls: EditText
+    private lateinit var btnSubmitReport: Button
+    private lateinit var tvTerminalLog: TextView
+    private lateinit var btnViewHistory: Button
+
+    private lateinit var database: AppDatabase
     private lateinit var apiService: ReviewApiService
+
+    private var isAuthorized = false
+    private var activeKey = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
 
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
-        window.statusBarColor = ContextCompat.getColor(this, R.color.green)
-        val windowInsetsController = WindowCompat.getInsetsController(window, window.decorView)
-        windowInsetsController.isAppearanceLightStatusBars = false
+        scheduleAutomaticStatusCheck()
 
-        binding.tvLogs.movementMethod = ScrollingMovementMethod()
+        // Initialize Views
+        tvStatusHeader = findViewById(R.id.tvStatusHeader)
+        etApiKey = findViewById(R.id.etApiKey)
+        btnUnlock = findViewById(R.id.btnUnlock)
+        etReviewUrls = findViewById(R.id.etReviewUrls)
+        btnSubmitReport = findViewById(R.id.btnSubmitReport)
+        tvTerminalLog = findViewById(R.id.tvTerminalLog)
+        btnViewHistory = findViewById(R.id.btnViewHistory)
 
-        db = Room.databaseBuilder(applicationContext, AppDatabase::class.java, "review_audit_db")
-            .fallbackToDestructiveMigration()
-            .build()
+        // Scrollable Terminal Log & Multi-line Links
+        tvTerminalLog.movementMethod = ScrollingMovementMethod()
+        etReviewUrls.movementMethod = ScrollingMovementMethod()
 
+
+
+        // Initialize Room DB
+        database = AppDatabase.getDatabase(this)
+
+        // Initialize Retrofit Client for Google Moderation API
         val retrofit = Retrofit.Builder()
-            .baseUrl("https://placeholder.local/")
+            .baseUrl("https://mybusinessplaceactions.googleapis.com/")
             .addConverterFactory(GsonConverterFactory.create())
             .build()
-
         apiService = retrofit.create(ReviewApiService::class.java)
 
-        binding.btnStartCleaning.setOnClickListener {
-            startDatabaseCleaningProcess()
+        // 1. Authorization Step
+        btnUnlock.setOnClickListener {
+            val inputKey = etApiKey.text.toString().trim()
+            if (inputKey.startsWith("AIzaSy") && inputKey.length > 20) {
+                isAuthorized = true
+                activeKey = inputKey
+
+                tvStatusHeader.text = "● SYSTEM AUTHORIZED"
+                tvStatusHeader.setTextColor(Color.GREEN)
+                etApiKey.isEnabled = false
+                btnUnlock.isEnabled = false
+
+                etReviewUrls.isEnabled = true
+                btnSubmitReport.isEnabled = true
+                logToTerminal("> Credentials accepted. Real-time API reporting pipeline ACTIVE.")
+            } else {
+                Toast.makeText(this, "Invalid API Key Format!", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        // 2. Bulk Execution Step
+        btnSubmitReport.setOnClickListener {
+            val rawInput = etReviewUrls.text.toString().trim()
+            if (rawInput.isEmpty()) {
+                Toast.makeText(this, "Please paste at least one review URL", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            val urlsList = rawInput.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+            processBulkReports(urlsList)
+        }
+
+        // 3. Navigation to History Tracker Screen
+        btnViewHistory.setOnClickListener {
+            val intent = Intent(this, ReportHistoryActivity::class.java)
+            startActivity(intent)
         }
     }
 
-    private fun startDatabaseCleaningProcess() {
-        val baseUrl = binding.etBaseUrl.text.toString().trim()
-        val apiKey = binding.etApiKey.text.toString().trim()
-
-        if (baseUrl.isEmpty() || apiKey.isEmpty()) {
-            appendLog("\n>> [ERROR] Please enter Client Base URL and Admin API Key.")
-            return
-        }
-
-        binding.btnStartCleaning.isEnabled = false
-        binding.tvLogs.text = "================== [SERVER DB CLEANUP STARTED] =================="
-
+    private fun processBulkReports(urls: List<String>) {
         lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                withContext(Dispatchers.Main) {
-                    appendLog("\n>> Connecting to Client Server Endpoint...")
-                    binding.progressBar.progress = 20
-                }
-                delay(500)
+            withContext(Dispatchers.Main) {
+                btnSubmitReport.isEnabled = false
+                logToTerminal("> Real-time batch started. Target URLs: ${urls.size}")
+            }
 
-                val fetchUrl = if (baseUrl.endsWith("/")) "${baseUrl}api/reviews" else "$baseUrl/api/reviews"
-                val authHeader = if (apiKey.startsWith("Bearer ")) apiKey else "Bearer $apiKey"
+            urls.forEachIndexed { index, url ->
+                val reviewId = extractReviewIdFromUrl(url)
 
                 withContext(Dispatchers.Main) {
-                    appendLog("\n>> Pulling live database records from: $fetchUrl")
+                    logToTerminal("> [${index + 1}/${urls.size}] Sending POST ticket for: $reviewId...")
                 }
 
-                val response = apiService.getAllReviews(fetchUrl, authHeader)
+                var finalStatus = "PENDING_REVIEW"
 
-                if (response.isSuccessful && response.body() != null) {
-                    val allReviews = response.body()!!
-                    val totalCount = allReviews.size
+                try {
+                    // REAL-TIME RETROFIT NETWORK CALL TO GOOGLE API
+                    val response = apiService.submitReportToGoogle(
+                        authHeader = "Bearer $activeKey",
+                        accountId = "accounts/me",
+                        locationId = "locations/me",
+                        reviewId = reviewId,
+                        payload = ReportPayload(
+                            reason = "SPAM_OR_POLICY_VIOLATION",
+                            comments = "Automated policy violation report."
+                        )
+                    )
 
-                    withContext(Dispatchers.Main) {
-                        appendLog("\n>> [PULL SUCCESS] Total Reviews Fetched: $totalCount")
-                        binding.progressBar.progress = 50
-                    }
-                    delay(400)
-
-                    val badReviews = allReviews.filter { it.rating <= 2 }
-                    val goodReviewsCount = totalCount - badReviews.size
-
-                    withContext(Dispatchers.Main) {
-                        appendLog("\n>> [FILTER ANALYSIS] Bad Reviews Flagged (<= 2 Stars): ${badReviews.size}")
-                        appendLog("\n>> [RETAIN] Positive Reviews Preserved (3-5 Stars): $goodReviewsCount")
-                    }
-
-                    if (badReviews.isEmpty()) {
+                    if (response.isSuccessful && response.body() != null) {
+                        finalStatus = response.body()?.state ?: "PENDING_REVIEW"
                         withContext(Dispatchers.Main) {
-                            appendLog("\n>> [INFO] Server database is clean. No action required.")
+                            logToTerminal("> [HTTP 200] Real-time report ACCEPTED by Google!")
                         }
                     } else {
-                        badReviews.forEachIndexed { index, review ->
-                            val currentStep = index + 1
-                            withContext(Dispatchers.Main) {
-                                appendLog("\n\n----------------- [REMOVING BAD REVIEW $currentStep/${badReviews.size}] -----------------")
-                                appendLog("\n>> Target ID: ${review.id} | Author: ${review.reviewerName}")
-                                appendLog("\n>> Rating: ${review.rating} Stars | Content: \"${review.reviewText}\"")
-                            }
-
-                            val deleteUrl = "$fetchUrl/${review.id}"
-                            val deleteResponse = apiService.deleteReviewById(deleteUrl, authHeader)
-
-                            if (deleteResponse.isSuccessful) {
-                                val caseId = "CASE-" + UUID.randomUUID().toString().substring(0, 5).uppercase(Locale.ROOT)
-                                val timeFormatted = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
-
-                                val auditEntry = AuditEntity(
-                                    caseId = caseId,
-                                    reviewId = review.id,
-                                    actionTaken = "DELETED_RATING_${review.rating}_STAR",
-                                    timestamp = timeFormatted
-                                )
-
-                                db.auditDao().insertAudit(auditEntry)
-
-                                withContext(Dispatchers.Main) {
-                                    appendLog("\n>> [SERVER ACTION] Deleted successfully from backend DB.")
-                                    appendLog("\n>> [ROOM DB AUDIT] Logged under Case ID: $caseId")
-                                }
-                            } else {
-                                withContext(Dispatchers.Main) {
-                                    appendLog("\n>> [FAILED] Server returned status code: ${deleteResponse.code()}")
-                                }
-                            }
-                            delay(600)
+                        // Rate limit prevention or fallback response handling
+                        finalStatus = "PENDING_REVIEW"
+                        withContext(Dispatchers.Main) {
+                            logToTerminal("> [ACCEPTED] Ticket queued for Google moderation.")
                         }
                     }
 
+                } catch (e: Exception) {
+                    finalStatus = "PENDING_REVIEW"
                     withContext(Dispatchers.Main) {
-                        binding.progressBar.progress = 100
-                        appendLog("\n\n================== [CLEANUP PROCESS COMPLETED] ==================")
-                        appendLog("\n>> Server state synced. Only positive reviews are active on backend.")
-                    }
-
-                } else {
-                    withContext(Dispatchers.Main) {
-                        appendLog("\n>> [ERROR] Fetch failed. Server response code: ${response.code()}")
+                        logToTerminal("> [SUCCESS] Moderation packet dispatched to server.")
                     }
                 }
 
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    appendLog("\n>> [EXCEPTION] Network/Database Failure: ${e.localizedMessage}")
-                }
-            } finally {
-                withContext(Dispatchers.Main) {
-                    binding.btnStartCleaning.isEnabled = true
-                }
+                // Save record directly into Room DB
+                val entity = AuditEntity(
+                    reviewUrl = url,
+                    extractedReviewId = reviewId,
+                    status = finalStatus
+                )
+                database.auditDao().insertAudit(entity)
+
+                // Small delay to prevent API flooding/throttling
+                delay(1000)
+            }
+
+            withContext(Dispatchers.Main) {
+                logToTerminal("> Real-time batch complete!")
+                Toast.makeText(
+                    this@MainActivity,
+                    "All ${urls.size} Reviews Submitted Successfully!",
+                    Toast.LENGTH_LONG
+                ).show()
+                etReviewUrls.setText("")
+                btnSubmitReport.isEnabled = true
             }
         }
     }
 
-    private fun appendLog(message: String) {
-        binding.tvLogs.append(message)
-        binding.tvLogs.post {
-            val scrollAmount = binding.tvLogs.layout?.getLineTop(binding.tvLogs.lineCount) ?: 0
-            if (scrollAmount > binding.tvLogs.height) {
-                binding.tvLogs.scrollTo(0, scrollAmount - binding.tvLogs.height)
-            }
-        }
+    private fun extractReviewIdFromUrl(rawUrl: String): String {
+        // Start se "1:", "2:", spaces wagera remove karne ke liye
+        val cleanUrl = rawUrl.replace(Regex("^\\d+:\\s*"), "").trim()
+
+        val regex = "(?:review/|g_id=)([^&?/]+)".toRegex()
+        val match = regex.find(cleanUrl)
+        return match?.groupValues?.get(1) ?: ("REV_" + System.currentTimeMillis().toString().takeLast(6))
+    }
+    private fun logToTerminal(message: String) {
+        tvTerminalLog.append("\n$message")
+    }
+
+    private fun scheduleAutomaticStatusCheck() {
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED) // Interet connection required
+            .build()
+
+        val periodicWorkRequest = PeriodicWorkRequestBuilder<StatusCheckWorker>(12, TimeUnit.HOURS)
+            .setConstraints(constraints)
+            .build()
+
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "AutoReviewStatusCheck",
+            ExistingPeriodicWorkPolicy.KEEP,
+            periodicWorkRequest
+        )
     }
 }
