@@ -18,7 +18,7 @@ interface AuditDao {
     @Query("SELECT * FROM audit_table WHERE status = 'Submitted' OR status = 'PENDING_REVIEW'")
     suspend fun getPendingAudits(): List<AuditEntity>
 
-    // Explicit Unit type define karein ya Int return type dein
+    // Synchronous Int return type specify karein (suspend remove kar dein)
     @Query("UPDATE audit_table SET status = :newStatus WHERE extractedReviewId = :reviewId")
-    suspend fun updateStatus(reviewId: String, newStatus: String): Unit
+    fun updateStatus(reviewId: String, newStatus: String): Int
 }
