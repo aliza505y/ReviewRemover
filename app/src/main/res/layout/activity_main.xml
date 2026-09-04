@@ -12,6 +12,7 @@
         android:orientation="vertical"
         android:padding="16dp">
 
+        <!-- Status Header Card -->
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -25,7 +26,7 @@
                 android:id="@+id/tvStatusHeader"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="● SYSTEM LOCKED"
+                android:text="● SYSTEM UNAUTHORIZED"
                 android:textColor="#FF5252"
                 android:textSize="16sp"
                 android:textStyle="bold"
@@ -33,35 +34,22 @@
                 android:padding="14dp"/>
         </com.google.android.material.card.MaterialCardView>
 
-        <EditText
-            android:id="@+id/etApiKey"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="Enter Google Cloud API Key (AIzaSy...)"
-            android:textColor="#FFFFFF"
-            android:textColorHint="#777777"
-            android:background="#1E1E1E"
-            android:padding="14dp"
-            android:textSize="14sp"
-            android:layout_marginBottom="8dp"/>
-
-        <Button
+        <!-- Official Google OAuth Sign-In Button (Replaces etApiKey & btnUnlock) -->
+        <com.google.android.gms.common.SignInButton
             android:id="@+id/btnUnlock"
             android:layout_width="match_parent"
             android:layout_height="50dp"
-            android:text="UNLOCK CONSOLE"
-            android:textStyle="bold"
-            android:backgroundTint="#2196F3"
             android:layout_marginBottom="16dp"/>
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Paste Review URLs (1per line,Up to 50 links):"
+            android:text="Paste Review URLs (1 per line, Up to 50 links):"
             android:textColor="#616060"
             android:textSize="13sp"
             android:layout_marginBottom="6dp"/>
 
+        <!-- Multi-line Links Input -->
         <EditText
             android:id="@+id/etReviewUrls"
             android:layout_width="match_parent"
@@ -79,6 +67,7 @@
             android:textSize="13sp"
             android:layout_marginBottom="12dp"/>
 
+        <!-- Submit Button -->
         <Button
             android:id="@+id/btnSubmitReport"
             android:layout_width="match_parent"
@@ -90,6 +79,7 @@
             android:backgroundTint="#4CAF50"
             android:layout_marginBottom="12dp"/>
 
+        <!-- Console Terminal Log -->
         <TextView
             android:id="@+id/tvTerminalLog"
             android:layout_width="match_parent"
@@ -103,6 +93,7 @@
             android:text="> Terminal ready..."
             android:layout_marginBottom="16dp"/>
 
+        <!-- Navigation Button -->
         <Button
             android:id="@+id/btnViewHistory"
             android:layout_width="match_parent"

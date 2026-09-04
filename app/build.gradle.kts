@@ -76,6 +76,9 @@ dependencies {
     // WorkManager Dependency
     implementation("androidx.work:work-runtime-ktx:2.9.0")
 
+    // Google Sign-In SDK for OAuth 2.0 Access Token
+    implementation("com.google.android.gms:play-services-auth:21.2.0")
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

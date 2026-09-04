@@ -1,50 +1,60 @@
 package com.example.reviewremover
 
-import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
+import android.graphics.Color
 
-class AuditAdapter(private var list: List<AuditEntity>) :
-    RecyclerView.Adapter<AuditAdapter.AuditViewHolder>() {
+class AuditAdapter(
+    private var auditList: List<AuditEntity>,
+    // 1. Click callback parameter add karein
+    private val onItemClick: (AuditEntity) -> Unit
+) : RecyclerView.Adapter<AuditAdapter.AuditViewHolder>() {
 
     class AuditViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val tvReviewId: TextView = itemView.findViewById(R.id.tvReviewId)
-        val tvReviewUrl: TextView = itemView.findViewById(R.id.tvReviewUrl)
         val tvStatus: TextView = itemView.findViewById(R.id.tvStatus)
+        val tvUrl: TextView = itemView.findViewById(R.id.tvReviewUrl)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): AuditViewHolder {
         val view = LayoutInflater.from(parent.context)
-            .inflate(R.layout.item_audit_history, parent, false)
+            .inflate(R.layout.item_audit_history, parent, false) // Aapki item layout file ka name
         return AuditViewHolder(view)
     }
 
     override fun onBindViewHolder(holder: AuditViewHolder, position: Int) {
-        val item = list[position]
-        holder.tvReviewId.text = "ID: ${item.extractedReviewId}"
-        holder.tvReviewUrl.text = item.reviewUrl
+        val audit = auditList[position]
 
-        // Status Logic: Simple "Submitted" & "Removed"
-        when (item.status) {
-            "REMOVED", "REMOVED_FROM_MAPS" -> {
-                holder.tvStatus.text = "Status: Removed"
-                holder.tvStatus.setTextColor(Color.GREEN)
+        holder.tvReviewId.text = audit.extractedReviewId
+        holder.tvStatus.text = audit.status
+        holder.tvUrl.text = audit.reviewUrl
+
+        // Status Colors Logic
+        when (audit.status.uppercase()) {
+            "REMOVED" -> {
+                holder.tvStatus.setTextColor(Color.parseColor("#4CAF50")) // Green
             }
-            else -> {
-                // Default submitted / pending status
-                holder.tvStatus.text = "Status: Submitted"
+            "SUBMITTED" -> {
                 holder.tvStatus.setTextColor(Color.parseColor("#FFC107")) // Yellow
             }
+            else -> {
+                holder.tvStatus.setTextColor(Color.WHITE)
+            }
+        }
+
+        // 2. Item click listener attach karein
+        holder.itemView.setOnClickListener {
+            onItemClick(audit)
         }
     }
 
-    override fun getItemCount(): Int = list.size
+    override fun getItemCount(): Int = auditList.size
 
     fun updateData(newList: List<AuditEntity>) {
-        list = newList
+        this.auditList = newList
         notifyDataSetChanged()
     }
 }

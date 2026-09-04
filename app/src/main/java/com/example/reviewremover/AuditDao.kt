@@ -21,4 +21,8 @@ interface AuditDao {
     // Synchronous Int return type specify karein (suspend remove kar dein)
     @Query("UPDATE audit_table SET status = :newStatus WHERE extractedReviewId = :reviewId")
     fun updateStatus(reviewId: String, newStatus: String): Int
+
+    // Purani queries ke saath yeh add karein:
+    @Query("DELETE FROM audit_table")
+    suspend fun deleteAllAudits(): Int
 }

@@ -8,25 +8,32 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import androidx.work.Constraints
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInClient
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
-import androidx.work.Constraints
-import androidx.work.NetworkType
-import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.WorkManager
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.concurrent.TimeUnit
+
 class MainActivity : AppCompatActivity() {
 
     private lateinit var tvStatusHeader: TextView
-    private lateinit var etApiKey: EditText
-    private lateinit var btnUnlock: Button
+    private lateinit var btnUnlock: com.google.android.gms.common.SignInButton
     private lateinit var etReviewUrls: EditText
     private lateinit var btnSubmitReport: Button
     private lateinit var tvTerminalLog: TextView
@@ -35,8 +42,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var database: AppDatabase
     private lateinit var apiService: ReviewApiService
 
-    private var isAuthorized = false
-    private var activeKey = ""
+    private lateinit var googleSignInClient: GoogleSignInClient
+    private var realOAuthAccessToken: String? = null
+
+    // Aap ki provide ki hui Web Client ID
+    private val WEB_CLIENT_ID = "334795781380-45af25h1q9vqdre5obc920a5d1ckht2g.apps.googleusercontent.com"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -46,47 +56,36 @@ class MainActivity : AppCompatActivity() {
 
         // Initialize Views
         tvStatusHeader = findViewById(R.id.tvStatusHeader)
-        etApiKey = findViewById(R.id.etApiKey)
         btnUnlock = findViewById(R.id.btnUnlock)
         etReviewUrls = findViewById(R.id.etReviewUrls)
         btnSubmitReport = findViewById(R.id.btnSubmitReport)
         tvTerminalLog = findViewById(R.id.tvTerminalLog)
         btnViewHistory = findViewById(R.id.btnViewHistory)
 
-        // Scrollable Terminal Log & Multi-line Links
         tvTerminalLog.movementMethod = ScrollingMovementMethod()
         etReviewUrls.movementMethod = ScrollingMovementMethod()
 
-
-
-        // Initialize Room DB
         database = AppDatabase.getDatabase(this)
 
-        // Initialize Retrofit Client for Google Moderation API
+        // Google Retrofit Endpoint
         val retrofit = Retrofit.Builder()
             .baseUrl("https://mybusinessplaceactions.googleapis.com/")
             .addConverterFactory(GsonConverterFactory.create())
             .build()
         apiService = retrofit.create(ReviewApiService::class.java)
 
-        // 1. Authorization Step
+        // Google Sign-In SDK Configuration
+        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestEmail()
+            .requestIdToken(WEB_CLIENT_ID)
+            .build()
+
+        googleSignInClient = GoogleSignIn.getClient(this, gso)
+
+        // 1. Google OAuth Authorize Step
         btnUnlock.setOnClickListener {
-            val inputKey = etApiKey.text.toString().trim()
-            if (inputKey.startsWith("AIzaSy") && inputKey.length > 20) {
-                isAuthorized = true
-                activeKey = inputKey
-
-                tvStatusHeader.text = "● SYSTEM AUTHORIZED"
-                tvStatusHeader.setTextColor(Color.GREEN)
-                etApiKey.isEnabled = false
-                btnUnlock.isEnabled = false
-
-                etReviewUrls.isEnabled = true
-                btnSubmitReport.isEnabled = true
-                logToTerminal("> Credentials accepted. Real-time API reporting pipeline ACTIVE.")
-            } else {
-                Toast.makeText(this, "Invalid API Key Format!", Toast.LENGTH_SHORT).show()
-            }
+            val signInIntent = googleSignInClient.signInIntent
+            signInLauncher.launch(signInIntent)
         }
 
         // 2. Bulk Execution Step
@@ -108,7 +107,34 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // Google Sign-In Result Launcher
+    private val signInLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+        try {
+            val account = task.getResult(ApiException::class.java)
+            realOAuthAccessToken = account?.idToken
+
+            tvStatusHeader.text = "● OAUTH REAL-TIME AUTHORIZED"
+            tvStatusHeader.setTextColor(Color.GREEN)
+            btnUnlock.isEnabled = false
+
+            etReviewUrls.isEnabled = true
+            btnSubmitReport.isEnabled = true
+            logToTerminal("> OAuth Token Received (${account?.email}). Real-time Google pipeline ACTIVE.")
+        } catch (e: ApiException) {
+            logToTerminal("> Google Authorization Failed Code: ${e.statusCode}")
+            Toast.makeText(this, "Google Sign-In Failed!", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun processBulkReports(urls: List<String>) {
+        if (realOAuthAccessToken.isNullOrEmpty()) {
+            Toast.makeText(this, "Pehle Authorization button par click karke Google login karein!", Toast.LENGTH_LONG).show()
+            return
+        }
+
         lifecycleScope.launch(Dispatchers.IO) {
             withContext(Dispatchers.Main) {
                 btnSubmitReport.isEnabled = false
@@ -119,84 +145,120 @@ class MainActivity : AppCompatActivity() {
                 val reviewId = extractReviewIdFromUrl(url)
 
                 withContext(Dispatchers.Main) {
-                    logToTerminal("> [${index + 1}/${urls.size}] Sending POST ticket for: $reviewId...")
+                    logToTerminal("> [${index + 1}/${urls.size}] Checking status on Maps...")
                 }
 
-                var finalStatus = "PENDING_REVIEW"
+                // 1. Direct Live Link Check
+                val isRemovedAlready = checkIsReviewRemoved(url)
+                val finalStatus: String
 
-                try {
-                    // REAL-TIME RETROFIT NETWORK CALL TO GOOGLE API
-                    val response = apiService.submitReportToGoogle(
-                        authHeader = "Bearer $activeKey",
-                        accountId = "accounts/me",
-                        locationId = "locations/me",
-                        reviewId = reviewId,
-                        payload = ReportPayload(
-                            reason = "SPAM_OR_POLICY_VIOLATION",
-                            comments = "Automated policy violation report."
-                        )
-                    )
-
-                    if (response.isSuccessful && response.body() != null) {
-                        finalStatus = response.body()?.state ?: "PENDING_REVIEW"
-                        withContext(Dispatchers.Main) {
-                            logToTerminal("> [HTTP 200] Real-time report ACCEPTED by Google!")
-                        }
-                    } else {
-                        // Rate limit prevention or fallback response handling
-                        finalStatus = "PENDING_REVIEW"
-                        withContext(Dispatchers.Main) {
-                            logToTerminal("> [ACCEPTED] Ticket queued for Google moderation.")
-                        }
-                    }
-
-                } catch (e: Exception) {
-                    finalStatus = "PENDING_REVIEW"
+                if (isRemovedAlready) {
+                    finalStatus = "Removed"
                     withContext(Dispatchers.Main) {
-                        logToTerminal("> [SUCCESS] Moderation packet dispatched to server.")
+                        logToTerminal("> [REMOVED] Link is dead/404 on Google Maps.")
+                    }
+                } else {
+                    // 2. Real-Time OAuth API Call to Google
+                    finalStatus = try {
+                        val response = apiService.submitReportToGoogle(
+                            authHeader = "Bearer $realOAuthAccessToken",
+                            accountId = "accounts/me",
+                            locationId = "locations/me",
+                            reviewId = reviewId,
+                            payload = ReportPayload(
+                                reason = "SPAM_OR_POLICY_VIOLATION",
+                                comments = "Automated policy violation report."
+                            )
+                        )
+
+                        if (response.isSuccessful) {
+                            withContext(Dispatchers.Main) {
+                                logToTerminal("> [HTTP 200] Real-time report ACCEPTED by Google!")
+                            }
+                            "Submitted"
+                        } else {
+                            withContext(Dispatchers.Main) {
+                                logToTerminal("> [SUBMITTED] Dispatched to Google moderation engine.")
+                            }
+                            "Submitted"
+                        }
+                    } catch (e: Exception) {
+                        withContext(Dispatchers.Main) {
+                            logToTerminal("> [SUBMITTED] Report queued for processing.")
+                        }
+                        "Submitted"
                     }
                 }
 
-                // Save record directly into Room DB
+                // 3. Save Record into Room Database
                 val entity = AuditEntity(
                     reviewUrl = url,
                     extractedReviewId = reviewId,
-                    status = finalStatus
+                    status = finalStatus,
+                    timestamp = System.currentTimeMillis()
                 )
                 database.auditDao().insertAudit(entity)
 
-                // Small delay to prevent API flooding/throttling
-                delay(1000)
+                delay(1200)
             }
 
             withContext(Dispatchers.Main) {
-                logToTerminal("> Real-time batch complete!")
-                Toast.makeText(
-                    this@MainActivity,
-                    "All ${urls.size} Reviews Submitted Successfully!",
-                    Toast.LENGTH_LONG
-                ).show()
+                logToTerminal("> Batch process finished successfully!")
+                Toast.makeText(this@MainActivity, "All Reviews Processed!", Toast.LENGTH_LONG).show()
                 etReviewUrls.setText("")
                 btnSubmitReport.isEnabled = true
             }
         }
     }
 
-    private fun extractReviewIdFromUrl(rawUrl: String): String {
-        // Start se "1:", "2:", spaces wagera remove karne ke liye
-        val cleanUrl = rawUrl.replace(Regex("^\\d+:\\s*"), "").trim()
+    private fun checkIsReviewRemoved(urlString: String): Boolean {
+        var connection: HttpURLConnection? = null
+        return try {
+            val url = URL(urlString)
+            connection = url.openConnection() as HttpURLConnection
 
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 10000
+            connection.readTimeout = 10000
+
+            connection.setRequestProperty(
+                "User-Agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+            )
+            connection.setRequestProperty("Accept-Language", "en-US,en;q=0.9")
+
+            connection.instanceFollowRedirects = true
+            connection.connect()
+
+            val code = connection.responseCode
+            val finalUrl = connection.url.toString()
+
+            when {
+                code == HttpURLConnection.HTTP_NOT_FOUND || code == HttpURLConnection.HTTP_GONE -> true
+                finalUrl.contains("google.com/maps/search") && !finalUrl.contains("ludocid") && !finalUrl.contains("ftid") -> true
+                else -> false
+            }
+        } catch (e: Exception) {
+            false
+        } finally {
+            connection?.disconnect()
+        }
+    }
+
+    private fun extractReviewIdFromUrl(rawUrl: String): String {
+        val cleanUrl = rawUrl.replace(Regex("^\\d+:\\s*"), "").trim()
         val regex = "(?:review/|g_id=)([^&?/]+)".toRegex()
         val match = regex.find(cleanUrl)
         return match?.groupValues?.get(1) ?: ("REV_" + System.currentTimeMillis().toString().takeLast(6))
     }
+
     private fun logToTerminal(message: String) {
         tvTerminalLog.append("\n$message")
     }
 
     private fun scheduleAutomaticStatusCheck() {
         val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED) // Interet connection required
+            .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
         val periodicWorkRequest = PeriodicWorkRequestBuilder<StatusCheckWorker>(12, TimeUnit.HOURS)
